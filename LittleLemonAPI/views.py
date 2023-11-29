@@ -1,43 +1,62 @@
 from django.shortcuts import get_object_or_404
-from rest_framework import generics
-from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework import generics, status, pagination
 from rest_framework.response import Response
-from rest_framework import status
-from .serializers import CategorySerializer, MenuItemSerializer, CartSerializer, OrderSerializer, OrderItemSerializer
-from .models import Category, MenuItem, Cart, Order, OrderItem
-from rest_framework.authentication import TokenAuthentication
-from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from django.contrib.auth.models import User, Group
+from .serializers import UserSerializer, CategorySerializer, MenuItemSerializer, CartSerializer, OrderSerializer, OrderItemSerializer
+from .models import Category, MenuItem, Cart, Order, OrderItem
+from .permissions import IsManagerUser
+
+class CustomPagination(pagination.PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 class CategoryView(generics.ListCreateAPIView):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
+    def get(self, request):
+        queryset = self.get_queryset()
+        serializer = CategorySerializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
     
 class MenuItemView(generics.ListCreateAPIView):
     queryset = MenuItem.objects.all()
     serializer_class = MenuItemSerializer
+    
+    # Add filters for sorting and search
+    filter_fields = ('title', 'price', 'featured', 'category')
+    search_fields = ('title', 'price', 'featured', 'category')
+    ordering_fields = ('title', 'price', 'featured', 'category')
+    
+    # Add pagination
+    pagination_class = CustomPagination
+    
     def get(self, request):
         queryset = self.get_queryset()
         serializer = MenuItemSerializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    def post(self, request):
         if request.user.groups.filter(name='Manager').exists():
-            return Response(serializer.data)
+            serializer = MenuItemSerializer(data=request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_403_FORBIDDEN)
         else:
-            return Response(serializer.data, status=status.HTTP_200_OK)
-    def post(self, request, pk):
-        try:
-            menu_item = MenuItem.objects.get(pk=pk)
-        except MenuItem.DoesNotExist:
-            return Response({"error": "Menu item not found"}, status=status.HTTP_404_NOT_FOUND)
-        
-        serializer = MenuItemSerializer(menu_item, data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_403_FORBIDDEN)
+            return Response(status=status.HTTP_403_FORBIDDEN)
 
 class SingleMenuItemView(generics.RetrieveUpdateDestroyAPIView):
     queryset = MenuItem.objects.all()
     serializer_class = MenuItemSerializer
+    
+    # Add filters for sorting and search
+    filter_fields = ('title', 'price', 'featured', 'category')
+    search_fields = ('title', 'price', 'featured', 'category')
+    ordering_fields = ('title', 'price', 'featured', 'category')
+    
+    # Add pagination
+    pagination_class = CustomPagination
+    
     def get(self):
         queryset = self.get_queryset()
         serializer = MenuItemSerializer(queryset)
@@ -58,23 +77,158 @@ class SingleMenuItemView(generics.RetrieveUpdateDestroyAPIView):
                 return Response(serializer.data, status=status.HTTP_200_OK)
             return Response(serializer.errors, status=status.HTTP_403_FORBIDDEN)
 
-@api_view(['GET'])
-def CartView(request):
-    if request.method == 'GET':
-        items = Cart.objects.all()
-        serialized_item = CartSerializer(items, many=True)
-        return Response(serialized_item.data, status=status.HTTP_200_OK)
-
-@api_view(['GET'])
-def OrderView(request):
-    if request.method == 'GET':
-        items = Order.objects.all()
-        serialized_item = OrderSerializer(items, many=True)
-        return Response(serialized_item.data, status=status.HTTP_200_OK)
-
+class ManagerUserView(generics.ListCreateAPIView):
+    queryset = User.objects.filter(groups__name='Manager')
+    serializer_class = UserSerializer
     
-def OrderItemView(request):
-    if request.method == 'GET':
-        items = OrderItem.objects.all()
-        serialized_item = OrderItemSerializer(items, many=True)
-        return Response(serialized_item.data, status=status.HTTP_200_OK)
+    def get(self, request):
+        queryset = self.get_queryset()
+        serializer = UserSerializer(queryset, many=True)
+        return Response(serializer.data)
+    
+    def post(self, request):
+        user = get_object_or_404(User, pk=request.data.get('pk'))
+        group = Group.objects.get(name='Manager')
+        user.groups.add(group)
+        serializer = UserSerializer(user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+    
+#Removes this particular user from the manager group and returns 200 – Success if everything is okay.If the user is not found, returns 404 – Not found
+class SingleManagerUserView(generics.DestroyAPIView):
+    permission_classes = [IsManagerUser]
+    queryset = User.objects.filter(groups__name='Manager')
+    def delete(self, request, pk):
+        user = get_object_or_404(User, pk=pk)
+        group = Group.objects.get(name='Manager')
+        user.groups.remove(group)
+        return Response(status=status.HTTP_200_OK)
+
+class DeliveryUserView(generics.ListCreateAPIView):
+    queryset = User.objects.filter(groups__name='Delivery Crew')
+    def get(self, request):
+        queryset = self.get_queryset()
+        serializer = UserSerializer(queryset, many=True)
+        return Response(serializer.data)
+    def post(self, request, pk):
+        user = get_object_or_404(User, pk=pk)
+        group = Group.objects.get(name='Delivery Crew')
+        user.groups.add(group)
+        return Response(status=status.HTTP_201_CREATED)
+
+#Assigns the user in the payload to delivery crew group and returns 201-Created HTTP
+class SingleDeliveryUserView(generics.DestroyAPIView):
+    queryset = User.objects.filter(groups__name='Delivery Crew')
+    def delete(self, request, pk):
+        user = get_object_or_404(User, pk=pk)
+        group = Group.objects.get(name='Delivery Crew')
+        user.groups.remove(group)
+        return Response(status=status.HTTP_200_OK)
+
+class CartView(generics.ListCreateAPIView):
+    queryset = Cart.objects.all()
+    serializer_class = CartSerializer
+    def get(self, request):
+        queryset = self.get_queryset()
+        serializer = CartSerializer(queryset, many=True)
+        if request.user.groups.filter(name='Customer').exists():
+            return Response(serializer.data)
+        else:
+            return Response(serializer.data, status=status.HTTP_200_OK)
+    def post(self, request, pk):
+        menu_item = get_object_or_404(MenuItem, pk=pk)
+        user = request.user
+        quantity = request.data.get('quantity')
+        unit_price = menu_item.price
+        price = unit_price * quantity
+        cart_item = Cart(user=user, menuitem=menu_item, quantity=quantity, unit_price=unit_price, price=price)
+        cart_item.save()
+        return Response(status=status.HTTP_201_CREATED)
+    
+    def delete(self, request, pk):
+        cart_item = get_object_or_404(Cart, pk=pk)
+        cart_item.delete()
+        return Response(status=status.HTTP_200_OK)
+
+# Create order view class with get and post methods, 
+# get() Returns all orders with order items created by this user, 
+# post() Creates a new order item for the current user. 
+# Gets current cart items from the cart endpoints and adds those items to the order items table. 
+# Then deletes all items from the cart for this user.
+class OrderView(generics.ListCreateAPIView):
+    queryset = Order.objects.all()
+    serializer_class = OrderSerializer
+    
+    # Add filters for sorting and search
+    filter_fields = ('user', 'delivery_clew', 'status', 'total', 'date')
+    search_fields = ('user', 'delivery_clew', 'status', 'total', 'date')
+    ordering_fields = ('user', 'delivery_clew', 'status', 'total', 'date')
+    
+    # Add pagination
+    pagination_class = CustomPagination
+    
+    def get(self, request):
+        if request.user.groups.filter(is_customer=True).exists():
+            order = Order.objects.filter(user=request.user)
+            serializer = OrderSerializer(order, many=True)
+            return Response(serializer.data)
+        elif request.user.groups.filter(is_delivery_crew=True).exists():
+            order = Order.objects.filter(delivery_clew=request.user)
+            serializer = OrderSerializer(order, many=True)
+            return Response(serializer.data)
+        elif request.user.groups.filter(name='Manager').exists():
+            order = Order.objects.all()
+            serializer = OrderSerializer(order, many=True)
+            return Response(serializer.data)
+    def post(self, request, pk):
+        if request.user.groups.filter(name='Customer').exists():
+            user = request.user
+            delivery_clew = request.data.get('delivery_clew')
+            status = request.data.get('status')
+            total = request.data.get('total')
+            date = request.data.get('date')
+            order = Order(user=user, delivery_clew=delivery_clew, status=status, total=total, date=date)
+            order.save()
+            cart_items = Cart.objects.filter(user=user)
+            for cart_item in cart_items:
+                order_item = OrderItem(order=order, menuitem=cart_item.menuitem, quantity=cart_item.quantity, unit_price=cart_item.unit_price, price=cart_item.price)
+                order_item.save()
+            cart_items.delete()
+            return Response(status=status.HTTP_201_CREATED)
+    
+#Returns all items for this order id. If the order ID doesn’t belong to the current user, it displays an appropriate HTTP error status code.
+class SingleOrderView(generics.ListAPIView):
+    queryset = OrderItem.objects.all()
+    serializer_class = OrderItemSerializer
+    def get(self, request, pk):
+        if request.user.groups.filter(name='Customer').exists():
+            order_id = get_object_or_404(Order, pk=pk)
+            if order_id.user == request.user:
+                queryset = self.get_queryset()
+                serializer = OrderItemSerializer(queryset, many=True)
+                return Response(serializer.data)
+            else:
+                return Response(status=status.HTTP_403_FORBIDDEN)
+        
+    def put(self, request, pk):
+        if request.user.groups.filter(name='Manager').exist():
+            order = get_object_or_404(Order, pk=pk)
+            delivery_clew = request.data.get('delivery_clew')
+            status = request.data.get('status')
+            order.delivery_clew = delivery_clew
+            order.status = status
+            order.save()
+            return Response(status=status.HTTP_200_OK)
+    
+    def patch(self, request, pk):
+        if request.user.groups.filter(is_delivery_crew=True).exist():
+            order = get_object_or_404(Order, pk=pk)
+            status = request.data.get('status')
+            order.status = status
+            order.save()
+            return Response(status=status.HTTP_200_OK)
+    
+    def delete(self, request, pk):
+        if request.user.groups.filter(name='Manager').exist():
+            order = get_object_or_404(Order, pk=pk)
+            order.delete()
+            return Response(status=status.HTTP_200_OK)

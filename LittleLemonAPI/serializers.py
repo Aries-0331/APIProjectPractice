@@ -1,6 +1,6 @@
-from decimal import Decimal
 from rest_framework import serializers
 from .models import Category, MenuItem, Cart, Order, OrderItem
+from django.contrib.auth.models import User
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -31,3 +31,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
         model = OrderItem
         fields = ['order', 'menuitem', 'quantity', 'unit_price', 'price']
         
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'groups']
