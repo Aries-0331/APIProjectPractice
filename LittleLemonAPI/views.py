@@ -86,8 +86,25 @@ class ManagerUserView(generics.ListCreateAPIView):
         serializer = UserSerializer(queryset, many=True)
         return Response(serializer.data)
     
+    # def post(self, request):
+    #     # Assuming you are passing the username as 'username' in the request data
+    #     username = request.data.get('username')
+
+    #     try:
+    #         user = User.objects.get(username=username)
+    #     except User.DoesNotExist:
+    #         return Response({"error": f"User with username '{username}' not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    #     # Get or create the manager group
+    #     manager_group, created = Group.objects.get_or_create(name='Manager')
+
+    #     # Assign the user to the manager group
+    #     user.groups.add(manager_group)
+
+    #     return Response({"message": f"User '{username}' has been assigned to the 'manager' group"}, status=status.HTTP_200_OK)
+    
     def post(self, request):
-        user = get_object_or_404(User, pk=request.data.get('pk'))
+        user = get_object_or_404(User, username=request.data.get('username'))
         group = Group.objects.get(name='Manager')
         user.groups.add(group)
         serializer = UserSerializer(user)
