@@ -1,3 +1,4 @@
+from decimal import Decimal
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status, pagination
 from rest_framework.response import Response
@@ -18,6 +19,15 @@ class CategoryView(generics.ListCreateAPIView):
         queryset = self.get_queryset()
         serializer = CategorySerializer(queryset, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+    def post(self, request):
+        if request.user.groups.filter(name='Manager').exists():
+            serializer = CategorySerializer(data=request.data)
+            if serializer.is_valid():
+                serializer.save()
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_403_FORBIDDEN)
+        else:
+            return Response(status=status.HTTP_403_FORBIDDEN)
     
 class MenuItemView(generics.ListCreateAPIView):
     queryset = MenuItem.objects.all()
@@ -123,16 +133,20 @@ class SingleManagerUserView(generics.DestroyAPIView):
             return Response(status=status.HTTP_404_NOT_FOUND)
 
 class DeliveryUserView(generics.ListCreateAPIView):
+    permission_classes = [IsManagerUser]
     queryset = User.objects.filter(groups__name='Delivery Crew')
     def get(self, request):
         queryset = self.get_queryset()
         serializer = UserSerializer(queryset, many=True)
         return Response(serializer.data)
-    def post(self, request, pk):
-        user = get_object_or_404(User, pk=pk)
-        group = Group.objects.get(name='Delivery Crew')
-        user.groups.add(group)
-        return Response(status=status.HTTP_201_CREATED)
+    def post(self, request):
+        try:
+            user = User.objects.get(pk=request.data.get('userId'))
+            group = Group.objects.get(name='Delivery Crew')
+            user.groups.add(group)
+            return Response(status=status.HTTP_201_CREATED)
+        except:
+            return Response(status=status.HTTP_404_NOT_FOUND)
 
 #Assigns the user in the payload to delivery crew group and returns 201-Created HTTP
 class SingleDeliveryUserView(generics.DestroyAPIView):
@@ -153,12 +167,22 @@ class CartView(generics.ListCreateAPIView):
             return Response(serializer.data)
         else:
             return Response(serializer.data, status=status.HTTP_200_OK)
-    def post(self, request, pk):
-        menu_item = get_object_or_404(MenuItem, pk=pk)
+    def post(self, request):
+        menu_item = get_object_or_404(MenuItem, pk=request.data.get('itemId'))
         user = request.user
         quantity = request.data.get('quantity')
+        if quantity is not None:
+            try:
+                quantity = int(quantity)
+            except ValueError:
+                return Response({"error": "Quantity must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            return Response({"error": "Quantity must be provided"}, status=status.HTTP_400_BAD_REQUEST)
         unit_price = menu_item.price
-        price = unit_price * quantity
+        try:
+            price = unit_price * quantity
+        except TypeError as e:
+            return Response({"error": f"Invalid quantity: {e}"}, status=status.HTTP_400_BAD_REQUEST)
         cart_item = Cart(user=user, menuitem=menu_item, quantity=quantity, unit_price=unit_price, price=price)
         cart_item.save()
         return Response(status=status.HTTP_201_CREATED)
