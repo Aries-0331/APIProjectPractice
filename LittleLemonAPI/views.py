@@ -1,7 +1,7 @@
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, status, pagination
 from rest_framework.response import Response
-from django.contrib.auth.models import User, Group
+from django.contrib.auth.models import User, Group, GroupManager
 from .serializers import UserSerializer, CategorySerializer, MenuItemSerializer, CartSerializer, OrderSerializer, OrderItemSerializer
 from .models import Category, MenuItem, Cart, Order, OrderItem
 from .permissions import IsManagerUser
@@ -113,12 +113,14 @@ class ManagerUserView(generics.ListCreateAPIView):
 #Removes this particular user from the manager group and returns 200 – Success if everything is okay.If the user is not found, returns 404 – Not found
 class SingleManagerUserView(generics.DestroyAPIView):
     permission_classes = [IsManagerUser]
-    queryset = User.objects.filter(groups__name='Manager')
-    def delete(self, request, pk):
-        user = get_object_or_404(User, pk=pk)
-        group = Group.objects.get(name='Manager')
-        user.groups.remove(group)
-        return Response(status=status.HTTP_200_OK)
+    def delete(self, request, userId):
+        try:
+            group = Group.objects.get(name='Manager')
+            user = User.objects.get(pk=userId)
+            user.groups.remove(group)
+            return Response(status=status.HTTP_200_OK)
+        except Group.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
 
 class DeliveryUserView(generics.ListCreateAPIView):
     queryset = User.objects.filter(groups__name='Delivery Crew')
