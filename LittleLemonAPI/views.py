@@ -191,7 +191,7 @@ class CartView(generics.ListCreateAPIView):
         cart_item = get_object_or_404(Cart, pk=pk)
         cart_item.delete()
         return Response(status=status.HTTP_200_OK)
-
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
 # Create order view class with get and post methods, 
 # get() Returns all orders with order items created by this user, 
 # post() Creates a new order item for the current user. 
@@ -202,41 +202,41 @@ class OrderView(generics.ListCreateAPIView):
     serializer_class = OrderSerializer
     
     # Add filters for sorting and search
-    filter_fields = ('user', 'delivery_clew', 'status', 'total', 'date')
-    search_fields = ('user', 'delivery_clew', 'status', 'total', 'date')
-    ordering_fields = ('user', 'delivery_clew', 'status', 'total', 'date')
+    filter_fields = ('user', 'delivery_crew', 'status', 'total', 'date')
+    search_fields = ('user', 'delivery_crew', 'status', 'total', 'date')
+    ordering_fields = ('user', 'delivery_crew', 'status', 'total', 'date')
     
     # Add pagination
     pagination_class = CustomPagination
     
     def get(self, request):
-        if request.user.groups.filter(is_customer=True).exists():
+        if request.user.groups.filter(name='Customer').exists():
             order = Order.objects.filter(user=request.user)
             serializer = OrderSerializer(order, many=True)
             return Response(serializer.data)
-        elif request.user.groups.filter(is_delivery_crew=True).exists():
-            order = Order.objects.filter(delivery_clew=request.user)
+        elif request.user.groups.filter(name='Delivery crew').exists():
+            order = Order.objects.filter(delivery_crew=request.user)
             serializer = OrderSerializer(order, many=True)
             return Response(serializer.data)
         elif request.user.groups.filter(name='Manager').exists():
             order = Order.objects.all()
             serializer = OrderSerializer(order, many=True)
             return Response(serializer.data)
-    def post(self, request, pk):
+    def post(self, request):
         if request.user.groups.filter(name='Customer').exists():
             user = request.user
-            delivery_clew = request.data.get('delivery_clew')
+            delivery_crew = get_object_or_404(User, pk=request.data.get('delivery_crew'))
             status = request.data.get('status')
             total = request.data.get('total')
             date = request.data.get('date')
-            order = Order(user=user, delivery_clew=delivery_clew, status=status, total=total, date=date)
+            order = Order(user=user, delivery_crew=delivery_crew, status=status, total=total, date=date)
             order.save()
             cart_items = Cart.objects.filter(user=user)
             for cart_item in cart_items:
                 order_item = OrderItem(order=order, menuitem=cart_item.menuitem, quantity=cart_item.quantity, unit_price=cart_item.unit_price, price=cart_item.price)
                 order_item.save()
             cart_items.delete()
-            return Response(status=status.HTTP_201_CREATED)
+            return Response("Create OK.")
     
 #Returns all items for this order id. If the order ID doesn’t belong to the current user, it displays an appropriate HTTP error status code.
 class SingleOrderView(generics.ListAPIView):
@@ -255,9 +255,9 @@ class SingleOrderView(generics.ListAPIView):
     def put(self, request, pk):
         if request.user.groups.filter(name='Manager').exist():
             order = get_object_or_404(Order, pk=pk)
-            delivery_clew = request.data.get('delivery_clew')
+            delivery_crew = request.data.get('delivery_crew')
             status = request.data.get('status')
-            order.delivery_clew = delivery_clew
+            order.delivery_crew = delivery_crew
             order.status = status
             order.save()
             return Response(status=status.HTTP_200_OK)
